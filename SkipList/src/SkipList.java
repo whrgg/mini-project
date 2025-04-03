@@ -1,6 +1,7 @@
 /**
  * 跳表的实现
  */
+
 public class SkipList<T extends Comparable<T>> {
     //跳表最大层级
     static final int MAX_LEVEL = 16;
@@ -108,7 +109,6 @@ public class SkipList<T extends Comparable<T>> {
     }
 
 
-
     public static void main(String[] args) {
         SkipList<Integer> skipList = new SkipList<>();
         for (int i = 0; i < 24; i++) {
@@ -123,9 +123,7 @@ public class SkipList<T extends Comparable<T>> {
 
         SkipList<Integer>.Node<Integer> node = skipList.get(22);
         System.out.println("**********查询结果:" + node.data + " **********");
-
         skipList.insert(26);
-
         skipList.delete(0);
         System.out.println("**********删除结果**********");
         skipList.printAll();
