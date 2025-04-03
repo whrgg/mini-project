@@ -2,6 +2,7 @@
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.Transaction;
 import redis.clients.jedis.resps.Tuple;
 
 import java.util.ArrayList;
@@ -19,6 +20,7 @@ public class RankService {
     //固定分法
     private  final double SCORE_RANGE = 1000.0;
     private int sharkIndex = 0;
+    private boolean isMigrating = false; // 新增：迁移状态标志
     static {
         jedisPoolConfig = new JedisPoolConfig();
         jedisPoolConfig.setMaxIdle(10);
@@ -54,9 +56,141 @@ public class RankService {
 
     // 添加或更新用户分数
     public void addScore(String userId, double score) {
-        String key = (!shareMark) ? RANK_KEY : (RANK_KEY + getShark(score));
         try (Jedis jedis = jedisPool.getResource()) {
-            jedis.zadd(key,score,userId);
+            if (isMigrating) {
+                // 使用事务确保双写原子性
+                jedis.watch(RANK_KEY);
+                String newKey = getShark(score);
+                Transaction tx = jedis.multi();
+                tx.zadd(RANK_KEY, score, userId);
+                tx.zadd(newKey, score, userId);
+                tx.exec();
+            } else {
+                String key = (!shareMark) ? RANK_KEY : getShark(score);
+                jedis.zadd(key, score, userId);
+            }
+        } catch (Exception e) {
+            // 重试机制
+            retryAddScore(userId, score, 3); // 最多重试3次
+        }
+    }
+
+    // 重试添加分数
+    private void retryAddScore(String userId, double score, int retryCount) {
+        if (retryCount <= 0) {
+            // 记录日志或抛出异常
+            return;
+        }
+        try (Jedis jedis = jedisPool.getResource()) {
+            if (isMigrating) {
+                String newKey = getShark(score);
+                jedis.zadd(RANK_KEY, score, userId);
+                jedis.zadd(newKey, score, userId);
+            } else {
+                String key = (!shareMark) ? RANK_KEY : getShark(score);
+                jedis.zadd(key, score, userId);
+            }
+        } catch (Exception e) {
+            retryAddScore(userId, score, retryCount - 1);
+        }
+    }
+
+    // 迁移完成后进行数据校验
+    private void validateMigration() {
+        try (Jedis jedis = jedisPool.getResource()) {
+            // 检查旧key是否为空
+            if (jedis.exists(RANK_KEY)) {
+                throw new RuntimeException("Migration validation failed: old key still exists");
+            }
+
+            // 检查总用户数是否一致
+            long oldCount = jedis.zcard(RANK_KEY);
+            long newCount = getTotalUsers();
+            if (oldCount != newCount) {
+                throw new RuntimeException("Migration validation failed: user count mismatch");
+            }
+        }
+    }
+
+    // 优化后的迁移方法
+    public void migrate() {
+        isMigrating = true; // 开始迁移
+        shareMark = true;   // 启用分片
+
+        try (Jedis jedis = jedisPool.getResource()) {
+            long total = jedis.zcard(RANK_KEY);
+            int batchSize = 10000; // 每批迁移的数据量
+            long cursor = 0;
+
+            while (cursor < total) {
+                // 分批获取数据
+                List<Tuple> batch = jedis.zrangeWithScores(RANK_KEY, cursor, cursor + batchSize - 1);
+
+                // 迁移当前批次
+                for (Tuple tuple : batch) {
+                    String userId = tuple.getElement();
+                    double score = tuple.getScore();
+                    String newKey = getShark(score);
+                    jedis.zadd(newKey, score, userId);
+                }
+
+                cursor += batchSize;
+
+                // 监控内存使用情况
+                if (isMemoryCritical(jedis)) {
+                    pauseMigration();
+                }
+            }
+
+            // 迁移完成后删除旧key
+            jedis.del(RANK_KEY);
+            isMigrating = false; // 结束迁移
+        }
+    }
+
+    // 检查内存是否达到临界值
+    private boolean isMemoryCritical(Jedis jedis) {
+        String memoryInfo = jedis.info("memory");
+        // 解析内存使用情况
+        long usedMemory = parseUsedMemory(memoryInfo);
+        long maxMemory = parseMaxMemory(memoryInfo);
+
+        // 如果未设置最大内存，默认使用系统内存的80%作为阈值
+        if (maxMemory == 0) {
+            maxMemory = (long) (Runtime.getRuntime().maxMemory() * 0.8);
+        }
+
+        // 内存使用率超过90%时认为达到临界值
+        double memoryUsage = (double) usedMemory / maxMemory;
+        return memoryUsage > 0.9;
+    }
+
+    // 解析已使用内存
+    private long parseUsedMemory(String memoryInfo) {
+        for (String line : memoryInfo.split("\n")) {
+            if (line.startsWith("used_memory:")) {
+                return Long.parseLong(line.substring("used_memory:".length()).trim());
+            }
+        }
+        return 0;
+    }
+
+    // 解析最大内存
+    private long parseMaxMemory(String memoryInfo) {
+        for (String line : memoryInfo.split("\n")) {
+            if (line.startsWith("maxmemory:")) {
+                return Long.parseLong(line.substring("maxmemory:".length()).trim());
+            }
+        }
+        return 0;
+    }
+
+    // 暂停迁移
+    private void pauseMigration() {
+        try {
+            Thread.sleep(5000); // 暂停5秒
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -184,24 +318,6 @@ public class RankService {
         return RANK_KEY + shardIndex;
     }
 
-    public void migrate(){
-        shareMark= true;
-        try(Jedis jedis = jedisPool.getResource()){
-            List<Tuple> allUsers = jedis.zrangeWithScores(RANK_KEY, 0, -1);
-
-            // 遍历并迁移数据
-            for (Tuple tuple : allUsers) {
-                String userId = tuple.getElement();
-                double score = tuple.getScore();
-                String newKey = getShark(score);
-                jedis.zadd(newKey, score, userId);
-            }
-
-            // 删除旧key（可选）
-            jedis.del(RANK_KEY);
-        }
-
-    }
 
 
     public boolean isShareMark() {
