@@ -1,13 +1,13 @@
 /**
  * 跳表的实现
  */
-public class SkipList {
+public class SkipList<T extends Comparable<T>> {
     //跳表最大层级
-    static final int MAX_LEVEL=16;
+    static final int MAX_LEVEL = 16;
     //跳表当前最大层级
-    int CURRENT_LEVEL=0;
+    int CURRENT_LEVEL = 0;
     //所有层的头节点
-    private final Node h=new Node();
+    private final Node<T> h = new Node<>();
 
     /**
      * 随机数确定插入数的最大层级
@@ -21,89 +21,76 @@ public class SkipList {
         return i;
     }
 
-    public boolean insert(int value){
-        int  level= randomLevel();
-        Node newNode=new Node();
-        newNode.data=value;
-        Node[] maxMine =new Node[level];
-        newNode.currentLevel=level;
+    public boolean insert(T value){
+        int level = randomLevel();
+        Node<T> newNode = new Node<>();
+        newNode.data = value;
+        Node<T>[] maxMine = new Node[level];
+        newNode.currentLevel = level;
         //初始化为头节点
-        for(int i=0;i<level;i++){
-            maxMine[i]=h;
+        for (int i = 0; i < level; i++) {
+            maxMine[i] = h;
         }
-        Node p=h;
-        for(int i=level-1;i>=0;i--){
-            //重点：不能重置Node=h，不重置这个部分是跳表的关键
-            while(p.next[i] != null&&p.next[i].data<value){
-                p=p.next[i];
+        Node<T> p = h;
+        for (int i = level - 1; i >= 0; i--) {
+            while (p.next[i] != null && p.next[i].data.compareTo(value) < 0) {
+                p = p.next[i];
             }
-            maxMine[i]=p;
+            maxMine[i] = p;
         }
-        for(int i=level-1;i>=0;i--){
-           newNode.next[i] = maxMine[i].next[i];
-           maxMine[i].next[i]=newNode;
+        for (int i = level - 1; i >= 0; i--) {
+            newNode.next[i] = maxMine[i].next[i];
+            maxMine[i].next[i] = newNode;
         }
 
         //更新当前跳表的最大层级
-        if(CURRENT_LEVEL<level){
-            CURRENT_LEVEL=level;
+        if (CURRENT_LEVEL < level) {
+            CURRENT_LEVEL = level;
         }
         return true;
     }
 
-    public Node get(int value){
-        Node p=h;
-        for(int i=CURRENT_LEVEL-1;i>=0;i--){
-            while (p.next[i] != null && p.next[i].data < value) {
+    public Node<T> get(T value) {
+        Node<T> p = h;
+        for (int i = CURRENT_LEVEL - 1; i >= 0; i--) {
+            while (p.next[i] != null && p.next[i].data.compareTo(value) < 0) {
                 p = p.next[i];
             }
-            if (p.next[0] != null && p.next[0].data == value) {
+            if (p.next[0] != null && p.next[0].data.compareTo(value) == 0) {
                 return p.next[0];
             }
         }
-
         return null;
     }
 
-    public boolean delete(int value){
-        Node[] preNode =new Node[CURRENT_LEVEL];
-        Node p=h;
-        for(int i=CURRENT_LEVEL-1;i>=0;i--){
-            while(p.next[i]!=null&&p.next[i].data<value){
-                p=p.next[i];
+    public boolean delete(T value) {
+        Node<T>[] preNode = new Node[CURRENT_LEVEL];
+        Node<T> p = h;
+        for (int i = CURRENT_LEVEL - 1; i >= 0; i--) {
+            while (p.next[i] != null && p.next[i].data.compareTo(value) < 0) {
+                p = p.next[i];
             }
-            preNode[i]=p;
+            preNode[i] = p;
         }
-        if (p.next[0] != null && p.next[0].data == value) {
-            //从最高级索引开始查看其前驱是否等于value，若等于则将当前节点指向value节点的后继节点
+        if (p.next[0] != null && p.next[0].data.compareTo(value) == 0) {
             for (int i = CURRENT_LEVEL - 1; i >= 0; i--) {
-                if (preNode[i].next[i] != null && preNode[i].next[i].data == value) {
+                if (preNode[i].next[i] != null && preNode[i].next[i].data.compareTo(value) == 0) {
                     preNode[i].next[i] = preNode[i].next[i].next[i];
                 }
             }
         }
 
-        while (CURRENT_LEVEL > 1 && h.next[CURRENT_LEVEL-1] == null) {
+        while (CURRENT_LEVEL > 1 && h.next[CURRENT_LEVEL - 1] == null) {
             CURRENT_LEVEL--;
         }
         return true;
     }
 
-
-
-
-    /**
-     * 节点内容
-     */
-    class Node{
-        //节点的最大值，方便后续删除内容
-        private int currentLevel=0;
-        //节点存储的值
-        public int data;
-        //下一节点的值
-        private Node[] next=new Node[MAX_LEVEL];
-        public Node(){}
-
+    class Node<T> {
+        private int currentLevel = 0;
+        public T data;
+        private Node<T>[] next = new Node[MAX_LEVEL];
+        public Node() {}
     }
 
     public void printAll() {
@@ -123,7 +110,7 @@ public class SkipList {
 
 
     public static void main(String[] args) {
-        SkipList skipList = new SkipList();
+        SkipList<Integer> skipList = new SkipList<>();
         for (int i = 0; i < 24; i++) {
             skipList.insert(i);
         }
@@ -134,15 +121,13 @@ public class SkipList {
         System.out.println("**********输出添加结果**********");
         skipList.printAll();
 
-        SkipList.Node node = skipList.get(22);
-        System.out.println("**********查询结果:" + node.data+" **********");
+        SkipList<Integer>.Node<Integer> node = skipList.get(22);
+        System.out.println("**********查询结果:" + node.data + " **********");
 
         skipList.insert(26);
 
         skipList.delete(0);
         System.out.println("**********删除结果**********");
         skipList.printAll();
-
-
     }
 }
