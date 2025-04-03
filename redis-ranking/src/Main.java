@@ -27,7 +27,8 @@ public class Main {
 //    }
 
     public static void main(String[] args) {
-        RankService service =new RankService("localhost",6379,"user1");
+        RankService service =new RankService("localhost",6379,"user");
+
         long l = System.currentTimeMillis();
         Long wuxiao0 = service.getUserRank("wuxiao500000");
         System.out.println(wuxiao0);
@@ -49,6 +50,7 @@ public class Main {
         for (Tuple tuple : topN) {
             System.out.println(tuple);
         }
+
 
     }
 
