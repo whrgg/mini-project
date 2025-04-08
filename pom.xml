@@ -10,6 +10,9 @@
     <version>0.0.1-SNAPSHOT</version>
     <name>mini-project-parent</name>
     <description>小玩意的父工程</description>
+    <modules>
+        <module>fileupload</module>
+    </modules>
 
     <packaging>pom</packaging>
 
@@ -39,6 +42,18 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>5.7.16</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>1.3.2</version>
+        </dependency>
     </dependencies>
 
     <!-- 插件配置 -->
@@ -49,7 +64,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>cn.edu.hut.wx.Main</mainClass> <!-- 替换为你的主类全限定名 -->
+                    <mainClass>cn.edu.hut.wx.FileMain</mainClass> <!-- 替换为你的主类全限定名 -->
                 </configuration>
             </plugin>
         </plugins>
